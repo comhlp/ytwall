@@ -2,43 +2,68 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>去演算法電視牆 - XML + 音效開關版</title>
+    <title>去演算法電視牆 - GitHub 最終整合版</title>
     <style>
-        body, html { background: #000; margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        .stage { width: 1280px; height: 720px; position: relative; background: #000; }
-        
-        /* 背景格樣式 */
+        body, html { 
+            background: #000; margin: 0; padding: 0; 
+            overflow: hidden; width: 100vw; height: 100vh; 
+            display: flex; justify-content: center; align-items: center;
+            font-family: sans-serif;
+        }
+
+        /* 畫布容器 */
+        .stage { 
+            width: 1280px; height: 720px; 
+            position: relative; background: #000; 
+        }
+
+        /* 背景 5x4 矩陣 */
         .bg-grid { 
             display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr); 
             gap: 4px; width: 100%; height: 100%; position: absolute; z-index: 1; 
         }
+
         .playlist-cell { 
-            background: #000; filter: brightness(0.25); position: relative; overflow: hidden; 
-            cursor: pointer; pointer-events: auto; border: 1px solid #111;
+            background: #000; filter: brightness(0.25); position: relative; 
+            overflow: hidden; cursor: pointer; border: 1px solid #111;
+            transition: filter 0.3s;
         }
-        .playlist-cell:hover { filter: brightness(0.8); border-color: #444; }
+        .playlist-cell:hover { filter: brightness(0.8); border-color: #555; }
         .thumb { width: 100%; height: 100%; object-fit: cover; position: absolute; pointer-events: none; }
 
-        /* 中心大格 (1/2 Size) */
+        /* 中心 Core 大格 (1/2 Size) */
         .upper-layer {
             position: absolute; z-index: 10;
             width: 500px; height: 350px; 
             top: 50%; left: 50%; transform: translate(-50%, -50%);
+            /* 羽化效果 */
             -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
             mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
             pointer-events: none; 
         }
 
-        /* 頂部 Mute 按鈕 */
+        /* Mute 切換按鈕 (位於 Core 頂部) */
         #mute-toggle {
-            position: absolute; top: calc(50% - 175px - 45px); left: 50%;
-            transform: translateX(-50%); z-index: 100;
-            padding: 8px 16px; font-size: 12px; color: #fff;
-            background: rgba(255, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.5);
-            border-radius: 4px; cursor: pointer; pointer-events: auto;
+            position: absolute; 
+            top: calc(50% - 175px - 45px); /* 距離中心點向上偏移 */
+            left: 50%;
+            transform: translateX(-50%); 
+            z-index: 100;
+            padding: 8px 16px; 
+            font-size: 12px; 
+            font-weight: bold;
+            color: #fff;
+            background: rgba(255, 0, 0, 0.6); 
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 4px; 
+            cursor: pointer;
+            pointer-events: auto;
+            backdrop-filter: blur(4px);
+            transition: background 0.2s;
         }
 
         iframe { width: 100%; height: 100%; border: none; }
+        /* 確保背景格內的 iframe 可點擊操作 */
         .playlist-cell iframe { pointer-events: auto; }
     </style>
 </head>
@@ -46,7 +71,11 @@
 
 <div class="stage">
     <div id="bgGrid" class="bg-grid"></div>
-    <div class="upper-layer"><div id="player"></div></div>
+
+    <div class="upper-layer">
+        <div id="player"></div>
+    </div>
+
     <button id="mute-toggle">🔇 CORE MUTE: ON</button>
 </div>
 
@@ -58,25 +87,23 @@
     let globalVideoId = "";
     let globalPlaylistIds = [];
 
-    // 1. 提取 ID 工具
+    // 1. 強化的 ID 提取工具
     function getID(url, type) {
         if (!url) return null;
         if (type === 'v') {
-            const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
-            return (match && match[2].length === 11) ? match[2] : null;
+            const vMatch = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+            return (vMatch && vMatch[2].length === 11) ? vMatch[2] : null;
         } else {
-            const match = url.match(/[?&]list=([^#\&\?]+)/);
-            return match ? match[1] : null;
+            // 專門提取 list= 後面的 ID，無視前面是否有 watch?v=
+            const pMatch = url.match(/[&?]list=([^&]+)/);
+            return pMatch ? pMatch[1] : null;
         }
     }
 
-    // 2. 讀取 XML 數據
-   // 2. 讀取 XML 數據 (加入防止快取機制)
+    // 2. 異步讀取 XML (加入防快取機制)
     async function loadXMLData() {
         try {
-            // 產生一個隨機數，讓瀏覽器以為每次都是新檔案
-            const nocache = "?v=" + Math.random(); 
-            
+            const nocache = "?v=" + new Date().getTime(); 
             const [coreRes, listRes] = await Promise.all([
                 fetch('corevid.xml' + nocache).then(r => r.text()),
                 fetch('playlist.xml' + nocache).then(r => r.text())
@@ -87,34 +114,61 @@
             // 解析 Core
             const coreDoc = parser.parseFromString(coreRes, "text/xml");
             const vUrls = Array.from(coreDoc.getElementsByTagName("video_url")).map(e => e.textContent.trim());
-            globalVideoId = getID(vUrls[Math.floor(Math.random() * vUrls.length)], 'v');
+            const randomVUrl = vUrls[Math.floor(Math.random() * vUrls.length)];
+            globalVideoId = getID(randomVUrl, 'v');
 
             // 解析 Playlists
             const listDoc = parser.parseFromString(listRes, "text/xml");
-            const pUrls = Array.from(listDoc.getElementsByTagName("playlist_url")).map(e => e.textContent.trim());
-            globalPlaylistIds = pUrls.map(u => getID(u, 'p')).filter(id => id);
+            const pElements = listDoc.getElementsByTagName("playlist_url");
+            globalPlaylistIds = [];
+            for (let i = 0; i < pElements.length; i++) {
+                const id = getID(pElements[i].textContent.trim(), 'p');
+                if (id) globalPlaylistIds.push(id);
+            }
 
-            // 初始化 YouTube Player
+            // Debug 資訊
+            console.log("Core ID:", globalVideoId);
+            console.log("Playlist 總數:", globalPlaylistIds.length);
+
             if (globalVideoId) initYouTubeAPI();
         } catch (e) {
-            console.error("XML 加載失敗:", e);
+            console.error("XML 加載失敗，請檢查檔案是否存在或格式正確:", e);
         }
     }
 
     // 3. YouTube Player 初始化
+    function onYouTubeIframeAPIReady() {
+        // API 準備好後等待 XML 數據載入
+    }
+
     function initYouTubeAPI() {
         player = new YT.Player('player', {
-            height: '100%', width: '100%', videoId: globalVideoId,
-            playerVars: { 'autoplay': 1, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': globalVideoId },
-            events: { 'onReady': (e) => { e.target.playVideo(); renderBG(); } }
+            height: '100%',
+            width: '100%',
+            videoId: globalVideoId,
+            playerVars: {
+                'autoplay': 1,
+                'mute': 1,
+                'controls': 0,
+                'loop': 1,
+                'playlist': globalVideoId,
+                'rel': 0
+            },
+            events: {
+                'onReady': (event) => {
+                    event.target.playVideo();
+                    renderBG();
+                }
+            }
         });
     }
 
-    // 4. Mute 切換按鈕
+    // 4. Mute 切換按鈕邏輯
     document.getElementById('mute-toggle').onclick = function() {
         if (player) {
             if (isCoreMuted) {
                 player.unMute();
+                player.setVolume(100);
                 this.innerHTML = "🔊 CORE SOUND: ON";
                 this.style.background = "rgba(0, 180, 0, 0.7)";
             } else {
@@ -126,7 +180,7 @@
         }
     };
 
-    // 5. 渲染背景
+    // 5. 渲染背景牆
     function renderBG() {
         const grid = document.getElementById('bgGrid');
         grid.innerHTML = '';
@@ -135,13 +189,16 @@
         for (let i = 0; i < 20; i++) {
             const cell = document.createElement('div');
             cell.className = 'playlist-cell';
-            const randomPid = globalPlaylistIds[Math.floor(Math.random() * globalPlaylistIds.length)];
             
+            // 從清單庫中隨機抽一個 ID
+            const pid = globalPlaylistIds[Math.floor(Math.random() * globalPlaylistIds.length)];
+            
+            // 背景縮圖（預設使用 Core 影片的縮圖，確保視覺統一）
             cell.innerHTML = `<img class="thumb" src="https://img.youtube.com/vi/${globalVideoId}/mqdefault.jpg">`;
             
+            // 點擊事件：載入帶聲音的清單
             cell.onclick = function() {
-                // 背景格點擊後帶聲播放 (mute=0)
-                this.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${randomPid}&autoplay=1&mute=0&controls=1" allow="autoplay; encrypted-media"></iframe>`;
+                this.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${pid}&autoplay=1&mute=0&controls=1" allow="autoplay; encrypted-media"></iframe>`;
                 this.style.filter = "brightness(1)";
                 this.style.zIndex = "5"; 
             };
@@ -149,9 +206,9 @@
         }
     }
 
-    // 啟動流程
+    // 啟動 XML 載入
     window.onload = loadXMLData;
 </script>
-</body>
 
+</body>
 </html>
