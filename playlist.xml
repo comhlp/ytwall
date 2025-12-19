@@ -5,7 +5,7 @@
         <channel_url>https://www.youtube.com/@ChannelName2</channel_url>
     </record>
     <record>
-        <playlist_url>https://www.youtube.com/playlist?list=PLQe9wg_F46jWGXB-YE4fmpfuO6uQVkkfJ</playlist_url>
+        <playlist_url>https://www.youtube.com/watch?v=-rdptIToczU&list=PLQe9wg_F46jWGXB-YE4fmpfuO6uQVkkfJ&index=1</playlist_url>
         <channel_url>https://www.youtube.com/@OurAiMusicMusic</channel_url>
     </record>
     <record>
@@ -21,4 +21,5 @@
         <channel_url>http://www.youtube.com/@SingFuHappiness</channel_url>
     </record>
 </listdata>
+
 
