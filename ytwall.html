@@ -2,185 +2,109 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>去演算法電視牆 - GitHub 最終整合版</title>
+    <title>去演算法電視牆 - 零殘渣數據驅動版</title>
     <style>
-        body, html { 
-            background: #000; margin: 0; padding: 0; 
-            overflow: hidden; width: 100vw; height: 100vh; 
-            display: flex; justify-content: center; align-items: center;
-            font-family: sans-serif;
-        }
-
-        /* 畫布容器 */
-        .stage { 
-            width: 1280px; height: 720px; 
-            position: relative; background: #000; 
-        }
-
-        /* 背景 5x4 矩陣 */
-        .bg-grid { 
-            display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr); 
-            gap: 4px; width: 100%; height: 100%; position: absolute; z-index: 1; 
-        }
-
-        .playlist-cell { 
-            background: #000; filter: brightness(0.25); position: relative; 
-            overflow: hidden; cursor: pointer; border: 1px solid #111;
-            transition: filter 0.3s;
-        }
-        .playlist-cell:hover { filter: brightness(0.8); border-color: #555; }
+        body, html { background: #000; margin: 0; padding: 0; overflow: hidden; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .stage { width: 1280px; height: 720px; position: relative; background: #000; }
+        .bg-grid { display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr); gap: 4px; width: 100%; height: 100%; position: absolute; z-index: 1; }
+        .playlist-cell { background: #000; filter: brightness(0.25); position: relative; overflow: hidden; cursor: pointer; border: 1px solid #111; transition: filter 0.3s; }
+        .playlist-cell:hover { filter: brightness(0.8); }
         .thumb { width: 100%; height: 100%; object-fit: cover; position: absolute; pointer-events: none; }
-
-        /* 中心 Core 大格 (1/2 Size) */
-        .upper-layer {
-            position: absolute; z-index: 10;
-            width: 500px; height: 350px; 
-            top: 50%; left: 50%; transform: translate(-50%, -50%);
-            /* 羽化效果 */
+        .upper-layer { 
+            position: absolute; z-index: 10; width: 500px; height: 350px; 
+            top: 50%; left: 50%; transform: translate(-50%, -50%); 
             -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
             mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
             pointer-events: none; 
         }
-
-        /* Mute 切換按鈕 (位於 Core 頂部) */
-        #mute-toggle {
-            position: absolute; 
-            top: calc(50% - 175px - 45px); /* 距離中心點向上偏移 */
-            left: 50%;
-            transform: translateX(-50%); 
-            z-index: 100;
-            padding: 8px 16px; 
-            font-size: 12px; 
-            font-weight: bold;
-            color: #fff;
-            background: rgba(255, 0, 0, 0.6); 
-            border: 1px solid rgba(255,255,255,0.4);
-            border-radius: 4px; 
-            cursor: pointer;
-            pointer-events: auto;
-            backdrop-filter: blur(4px);
-            transition: background 0.2s;
-        }
-
+        #mute-toggle { position: absolute; top: calc(50% - 175px - 45px); left: 50%; transform: translateX(-50%); z-index: 100; padding: 8px 16px; font-size: 12px; color: #fff; background: rgba(255, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; cursor: pointer; pointer-events: auto; }
         iframe { width: 100%; height: 100%; border: none; }
-        /* 確保背景格內的 iframe 可點擊操作 */
-        .playlist-cell iframe { pointer-events: auto; }
     </style>
 </head>
 <body>
-
 <div class="stage">
     <div id="bgGrid" class="bg-grid"></div>
-
-    <div class="upper-layer">
-        <div id="player"></div>
-    </div>
-
+    <div class="upper-layer"><div id="player"></div></div>
     <button id="mute-toggle">🔇 CORE MUTE: ON</button>
 </div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
-
 <script>
     let player;
     let isCoreMuted = true;
     let globalVideoId = "";
     let globalPlaylistIds = [];
 
-    // 1. 強化的 ID 提取工具
+    // 通用 ID 提取器 (無 Hardcode)
     function getID(url, type) {
         if (!url) return null;
         if (type === 'v') {
             const vMatch = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
             return (vMatch && vMatch[2].length === 11) ? vMatch[2] : null;
         } else {
-            // 專門提取 list= 後面的 ID，無視前面是否有 watch?v=
-            const pMatch = url.match(/[&?]list=([^&]+)/);
+            const pMatch = url.match(/[&?]list=([^&"'\s>]+)/);
             return pMatch ? pMatch[1] : null;
         }
     }
 
-    // 2. 異步讀取 XML (加入防快取機制)
     async function loadXMLData() {
         try {
-            const nocache = "?v=" + new Date().getTime(); 
+            // 每次讀取都附帶時間戳，確保 GitHub 必須交出最新版
+            const cacheBuster = "?v=" + new Date().getTime(); 
             const [coreRes, listRes] = await Promise.all([
-                fetch('corevid.xml' + nocache).then(r => r.text()),
-                fetch('playlist.xml' + nocache).then(r => r.text())
+                fetch('corevid.xml' + cacheBuster).then(r => r.text()),
+                fetch('playlist.xml' + cacheBuster).then(r => r.text())
             ]);
 
             const parser = new DOMParser();
             
-            // 解析 Core
+            // 1. 動態解析 Core (從 XML 隨機抽取一條)
             const coreDoc = parser.parseFromString(coreRes, "text/xml");
             const vUrls = Array.from(coreDoc.getElementsByTagName("video_url")).map(e => e.textContent.trim());
-            const randomVUrl = vUrls[Math.floor(Math.random() * vUrls.length)];
-            globalVideoId = getID(randomVUrl, 'v');
-
-            // 解析 Playlists
-            const listDoc = parser.parseFromString(listRes, "text/xml");
-            const pElements = listDoc.getElementsByTagName("playlist_url");
-            globalPlaylistIds = [];
-            for (let i = 0; i < pElements.length; i++) {
-                const id = getID(pElements[i].textContent.trim(), 'p');
-                if (id) globalPlaylistIds.push(id);
+            if (vUrls.length > 0) {
+                globalVideoId = getID(vUrls[Math.floor(Math.random() * vUrls.length)], 'v');
             }
 
-            // Debug 資訊
-            console.log("Core ID:", globalVideoId);
-            console.log("Playlist 總數:", globalPlaylistIds.length);
+            // 2. 動態解析背景 Playlists (抓取所有有效清單)
+            const listDoc = parser.parseFromString(listRes, "text/xml");
+            const pUrls = Array.from(listDoc.getElementsByTagName("playlist_url")).map(e => e.textContent.trim());
+            globalPlaylistIds = pUrls.map(u => getID(u, 'p')).filter(id => id);
 
+            console.log("數據就緒 - Core:", globalVideoId, "Playlists:", globalPlaylistIds.length);
+
+            // 只有當 Core ID 存在時才啟動播放器
             if (globalVideoId) initYouTubeAPI();
-        } catch (e) {
-            console.error("XML 加載失敗，請檢查檔案是否存在或格式正確:", e);
-        }
-    }
+            else alert("XML 讀取成功但未發現有效影片網址，請檢查 corevid.xml");
 
-    // 3. YouTube Player 初始化
-    function onYouTubeIframeAPIReady() {
-        // API 準備好後等待 XML 數據載入
+        } catch (e) {
+            console.error("數據加載失敗，請檢查 XML 檔案是否存在:", e);
+        }
     }
 
     function initYouTubeAPI() {
+        // 防止重複初始化
+        if (player) return;
         player = new YT.Player('player', {
-            height: '100%',
-            width: '100%',
-            videoId: globalVideoId,
-            playerVars: {
-                'autoplay': 1,
-                'mute': 1,
-                'controls': 0,
-                'loop': 1,
-                'playlist': globalVideoId,
-                'rel': 0
-            },
-            events: {
-                'onReady': (event) => {
-                    event.target.playVideo();
-                    renderBG();
-                }
-            }
+            height: '100%', width: '100%', videoId: globalVideoId,
+            playerVars: { 'autoplay': 1, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': globalVideoId },
+            events: { 'onReady': (e) => { e.target.playVideo(); renderBG(); } }
         });
     }
 
-    // 4. Mute 切換按鈕邏輯
     document.getElementById('mute-toggle').onclick = function() {
-        if (player) {
-            if (isCoreMuted) {
-                player.unMute();
-                player.setVolume(100);
-                this.innerHTML = "🔊 CORE SOUND: ON";
-                this.style.background = "rgba(0, 180, 0, 0.7)";
-            } else {
-                player.mute();
-                this.innerHTML = "🔇 CORE MUTE: ON";
-                this.style.background = "rgba(255, 0, 0, 0.6)";
-            }
-            isCoreMuted = !isCoreMuted;
+        if (!player) return;
+        if (isCoreMuted) {
+            player.unMute();
+            this.innerHTML = "🔊 CORE SOUND: ON";
+            this.style.background = "rgba(0, 180, 0, 0.7)";
+        } else {
+            player.mute();
+            this.innerHTML = "🔇 CORE MUTE: ON";
+            this.style.background = "rgba(255, 0, 0, 0.6)";
         }
+        isCoreMuted = !isCoreMuted;
     };
 
-    // 5. 渲染背景牆
     function renderBG() {
         const grid = document.getElementById('bgGrid');
         grid.innerHTML = '';
@@ -189,14 +113,11 @@
         for (let i = 0; i < 20; i++) {
             const cell = document.createElement('div');
             cell.className = 'playlist-cell';
-            
-            // 從清單庫中隨機抽一個 ID
             const pid = globalPlaylistIds[Math.floor(Math.random() * globalPlaylistIds.length)];
             
-            // 背景縮圖（預設使用 Core 影片的縮圖，確保視覺統一）
+            // 背景縮圖統一使用 Core 縮圖保持視覺整潔
             cell.innerHTML = `<img class="thumb" src="https://img.youtube.com/vi/${globalVideoId}/mqdefault.jpg">`;
             
-            // 點擊事件：載入帶聲音的清單
             cell.onclick = function() {
                 this.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${pid}&autoplay=1&mute=0&controls=1" allow="autoplay; encrypted-media"></iframe>`;
                 this.style.filter = "brightness(1)";
@@ -206,9 +127,8 @@
         }
     }
 
-    // 啟動 XML 載入
-    window.onload = loadXMLData;
+    // 啟動點：等待 YouTube API 載入後再抓數據
+    window.onYouTubeIframeAPIReady = loadXMLData;
 </script>
-
 </body>
 </html>
