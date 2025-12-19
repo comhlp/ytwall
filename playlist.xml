@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<listdata>
+    <record>
+        <playlist_url>https://www.youtube.com/playlist?list=PLkhKtwEEzalMoXT-E87QyILJtRifci6Io</playlist_url>
+        <channel_url>https://www.youtube.com/@ChannelName2</channel_url>
+    </record>
+    <record>
+        <playlist_url>https://www.youtube.com/playlist?list=PLanotherID</playlist_url>
+        <channel_url>https://www.youtube.com/@ChannelName2</channel_url>
+    </record>
+</listdata>

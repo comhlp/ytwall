@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>去演算法電視牆 - 最終音效修正版</title>
+    <style>
+        body, html { background: #000; margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        .stage { width: 1280px; height: 720px; position: relative; background: #000; }
+        
+        /* 背景層 */
+        .bg-grid { 
+            display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr); 
+            gap: 4px; width: 100%; height: 100%; position: absolute; z-index: 1; 
+        }
+        .playlist-cell { 
+            background: #000; filter: brightness(0.25); position: relative; overflow: hidden; 
+            cursor: pointer; pointer-events: auto; border: 1px solid #111;
+        }
+        .playlist-cell:hover { filter: brightness(0.8); border-color: #444; }
+        .thumb { width: 100%; height: 100%; object-fit: cover; position: absolute; pointer-events: none; }
+
+        /* 中心大格 (1/2 Size) */
+        .upper-layer {
+            position: absolute; z-index: 10;
+            width: 500px; height: 350px; 
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
+            pointer-events: none; /* 關鍵：讓點擊穿透到背景格 */
+        }
+
+        /* Mute 切換按鈕 */
+        #mute-toggle {
+            position: absolute;
+            top: calc(50% - 175px - 40px);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            padding: 8px 16px;
+            font-size: 12px;
+            color: #fff;
+            background: rgba(255, 0, 0, 0.6);
+            border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 4px;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        iframe { width: 100%; height: 100%; border: none; }
+        /* 讓背景格內的 iframe 能夠接收點擊操作 */
+        .playlist-cell iframe { pointer-events: auto; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="stage">
+    <div id="bgGrid" class="bg-grid"></div>
+    <div class="upper-layer"><div id="player"></div></div>
+    <button id="mute-toggle">🔇 CORE MUTE: ON</button>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+    let player;
+    let isCoreMuted = true;
+    const coreVideoId = "vSEV5q2-G_w"; 
+    // 這裡放入你的背景播放清單 ID
+    const playlistIds = ["PLkhKtwEEzalMoXT-E87QyILJtRifci6Io"];
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            height: '100%', width: '100%', videoId: coreVideoId,
+            playerVars: { 'autoplay': 1, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': coreVideoId },
+            events: { 'onReady': (e) => { e.target.playVideo(); renderBG(); } }
+        });
+    }
+
+    // Core 靜音開關
+    document.getElementById('mute-toggle').onclick = function() {
+        if (player) {
+            if (isCoreMuted) {
+                player.unMute();
+                this.innerHTML = "🔊 CORE SOUND: ON";
+                this.style.background = "rgba(0, 180, 0, 0.7)";
+            } else {
+                player.mute();
+                this.innerHTML = "🔇 CORE MUTE: ON";
+                this.style.background = "rgba(255, 0, 0, 0.6)";
+            }
+            isCoreMuted = !isCoreMuted;
+        }
+    };
+
+    function renderBG() {
+        const grid = document.getElementById('bgGrid');
+        grid.innerHTML = '';
+        for (let i = 0; i < 20; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'playlist-cell';
+            const randomPid = playlistIds[Math.floor(Math.random() * playlistIds.length)];
+            
+            // 預覽圖使用 Core 影片縮圖
+            cell.innerHTML = `<img class="thumb" src="https://img.youtube.com/vi/${coreVideoId}/mqdefault.jpg">`;
+            
+            // 點擊背景格
+            cell.onclick = function() {
+                // 如果你想背景格播放時有聲，將 mute 設為 0
+                // 注意：如果 Core 正在響，兩邊會同時有聲
+                this.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${randomPid}&autoplay=1&mute=0&controls=1" allow="autoplay; encrypted-media"></iframe>`;
+                this.style.filter = "brightness(1)";
+                this.style.zIndex = "5"; // 提高該格層級，防止被遮擋
+            };
+            grid.appendChild(cell);
+        }
+    }
+</script>
+</body>
+</html>

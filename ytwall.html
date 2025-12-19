@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>去演算法電視牆 - XML + 音效開關版</title>
+    <style>
+        body, html { background: #000; margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        .stage { width: 1280px; height: 720px; position: relative; background: #000; }
+        
+        /* 背景格樣式 */
+        .bg-grid { 
+            display: grid; grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(4, 1fr); 
+            gap: 4px; width: 100%; height: 100%; position: absolute; z-index: 1; 
+        }
+        .playlist-cell { 
+            background: #000; filter: brightness(0.25); position: relative; overflow: hidden; 
+            cursor: pointer; pointer-events: auto; border: 1px solid #111;
+        }
+        .playlist-cell:hover { filter: brightness(0.8); border-color: #444; }
+        .thumb { width: 100%; height: 100%; object-fit: cover; position: absolute; pointer-events: none; }
+
+        /* 中心大格 (1/2 Size) */
+        .upper-layer {
+            position: absolute; z-index: 10;
+            width: 500px; height: 350px; 
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 95%);
+            pointer-events: none; 
+        }
+
+        /* 頂部 Mute 按鈕 */
+        #mute-toggle {
+            position: absolute; top: calc(50% - 175px - 45px); left: 50%;
+            transform: translateX(-50%); z-index: 100;
+            padding: 8px 16px; font-size: 12px; color: #fff;
+            background: rgba(255, 0, 0, 0.6); border: 1px solid rgba(255,255,255,0.5);
+            border-radius: 4px; cursor: pointer; pointer-events: auto;
+        }
+
+        iframe { width: 100%; height: 100%; border: none; }
+        .playlist-cell iframe { pointer-events: auto; }
+    </style>
+</head>
+<body>
+
+<div class="stage">
+    <div id="bgGrid" class="bg-grid"></div>
+    <div class="upper-layer"><div id="player"></div></div>
+    <button id="mute-toggle">🔇 CORE MUTE: ON</button>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+    let player;
+    let isCoreMuted = true;
+    let globalVideoId = "";
+    let globalPlaylistIds = [];
+
+    // 1. 提取 ID 工具
+    function getID(url, type) {
+        if (!url) return null;
+        if (type === 'v') {
+            const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+            return (match && match[2].length === 11) ? match[2] : null;
+        } else {
+            const match = url.match(/[?&]list=([^#\&\?]+)/);
+            return match ? match[1] : null;
+        }
+    }
+
+    // 2. 讀取 XML 數據
+    async function loadXMLData() {
+        try {
+            const [coreRes, listRes] = await Promise.all([
+                fetch('corevid.xml').then(r => r.text()),
+                fetch('playlist.xml').then(r => r.text())
+            ]);
+            const parser = new DOMParser();
+            
+            // 解析 Core
+            const coreDoc = parser.parseFromString(coreRes, "text/xml");
+            const vUrls = Array.from(coreDoc.getElementsByTagName("video_url")).map(e => e.textContent.trim());
+            globalVideoId = getID(vUrls[Math.floor(Math.random() * vUrls.length)], 'v');
+
+            // 解析 Playlists
+            const listDoc = parser.parseFromString(listRes, "text/xml");
+            const pUrls = Array.from(listDoc.getElementsByTagName("playlist_url")).map(e => e.textContent.trim());
+            globalPlaylistIds = pUrls.map(u => getID(u, 'p')).filter(id => id);
+
+            // 初始化 YouTube Player
+            if (globalVideoId) initYouTubeAPI();
+        } catch (e) {
+            console.error("XML 加載失敗，請確保在伺服器環境運行:", e);
+        }
+    }
+
+    // 3. YouTube Player 初始化
+    function initYouTubeAPI() {
+        player = new YT.Player('player', {
+            height: '100%', width: '100%', videoId: globalVideoId,
+            playerVars: { 'autoplay': 1, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': globalVideoId },
+            events: { 'onReady': (e) => { e.target.playVideo(); renderBG(); } }
+        });
+    }
+
+    // 4. Mute 切換按鈕
+    document.getElementById('mute-toggle').onclick = function() {
+        if (player) {
+            if (isCoreMuted) {
+                player.unMute();
+                this.innerHTML = "🔊 CORE SOUND: ON";
+                this.style.background = "rgba(0, 180, 0, 0.7)";
+            } else {
+                player.mute();
+                this.innerHTML = "🔇 CORE MUTE: ON";
+                this.style.background = "rgba(255, 0, 0, 0.6)";
+            }
+            isCoreMuted = !isCoreMuted;
+        }
+    };
+
+    // 5. 渲染背景
+    function renderBG() {
+        const grid = document.getElementById('bgGrid');
+        grid.innerHTML = '';
+        if (globalPlaylistIds.length === 0) return;
+
+        for (let i = 0; i < 20; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'playlist-cell';
+            const randomPid = globalPlaylistIds[Math.floor(Math.random() * globalPlaylistIds.length)];
+            
+            cell.innerHTML = `<img class="thumb" src="https://img.youtube.com/vi/${globalVideoId}/mqdefault.jpg">`;
+            
+            cell.onclick = function() {
+                // 背景格點擊後帶聲播放 (mute=0)
+                this.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${randomPid}&autoplay=1&mute=0&controls=1" allow="autoplay; encrypted-media"></iframe>`;
+                this.style.filter = "brightness(1)";
+                this.style.zIndex = "5"; 
+            };
+            grid.appendChild(cell);
+        }
+    }
+
+    // 啟動流程
+    window.onload = loadXMLData;
+</script>
+</body>
+</html>
