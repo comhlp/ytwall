@@ -71,12 +71,17 @@
     }
 
     // 2. 讀取 XML 數據
+   // 2. 讀取 XML 數據 (加入防止快取機制)
     async function loadXMLData() {
         try {
+            // 產生一個隨機數，讓瀏覽器以為每次都是新檔案
+            const nocache = "?v=" + Math.random(); 
+            
             const [coreRes, listRes] = await Promise.all([
-                fetch('corevid.xml').then(r => r.text()),
-                fetch('playlist.xml').then(r => r.text())
+                fetch('corevid.xml' + nocache).then(r => r.text()),
+                fetch('playlist.xml' + nocache).then(r => r.text())
             ]);
+
             const parser = new DOMParser();
             
             // 解析 Core
@@ -92,7 +97,7 @@
             // 初始化 YouTube Player
             if (globalVideoId) initYouTubeAPI();
         } catch (e) {
-            console.error("XML 加載失敗，請確保在伺服器環境運行:", e);
+            console.error("XML 加載失敗:", e);
         }
     }
 
@@ -148,4 +153,5 @@
     window.onload = loadXMLData;
 </script>
 </body>
+
 </html>
