@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>去演算法電視牆 - 質感回歸版</title>
+    <title>去演算法電視牆 - 隨機質感版</title>
     <style>
         body, html { background: #000; margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
         .stage { width: 1280px; height: 720px; position: relative; background: #000; }
@@ -15,11 +15,12 @@
         .playlist-cell { 
             background: #000; filter: brightness(0.25); position: relative; overflow: hidden; 
             cursor: pointer; pointer-events: auto; border: 1px solid #111;
+            transition: filter 0.5s ease;
         }
         .playlist-cell:hover { filter: brightness(0.8); border-color: #444; }
         .thumb { width: 100%; height: 100%; object-fit: cover; position: absolute; pointer-events: none; }
 
-        /* 中心大格 (1/2 Size) - 恢復柔邊羽化 */
+        /* 中心大格 (1/2 Size) - 柔邊羽化保持 */
         .upper-layer {
             position: absolute; z-index: 10;
             width: 500px; height: 350px; 
@@ -29,7 +30,7 @@
             pointer-events: none; 
         }
 
-        /* Mute 切換按鈕 - 恢復位置 */
+        /* Mute 按鈕位置保持 */
         #mute-toggle {
             position: absolute;
             top: calc(50% - 175px - 40px);
@@ -47,7 +48,6 @@
         }
 
         iframe { width: 100%; height: 100%; border: none; }
-        .playlist-cell iframe { pointer-events: auto; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
@@ -66,7 +66,6 @@
     let coreVideoId = ""; 
     let wallData = []; 
 
-    // 啟動點：先讀取所有 XML
     async function loadDataAndInit() {
         const cache = "?t=" + new Date().getTime();
         try {
@@ -86,14 +85,20 @@
                 const url = rec.getElementsByTagName("playlist_url")[0].textContent.trim();
                 return {
                     pid: url.match(/[?&]list=([^&]+)/)?.[1],
-                    vid: url.match(/[?&]v=([^&]+)/)?.[1] // 從 XML 抓取縮圖專用 ID
+                    vid: url.match(/[?&]v=([^&]+)/)?.[1]
                 };
             }).filter(d => d.pid);
 
-            // 數據讀取完後再初始化播放器
-            initPlayer();
+            if (!player) {
+                initPlayer();
+            } else {
+                renderWall(); // 定時刷新時只重畫牆面
+            }
         } catch (e) { console.error("XML Error", e); }
     }
+
+    // 每 60 秒自動刷新一次背景牆 (你可以改成 300000 代表 5 分鐘)
+    setInterval(loadDataAndInit, 60000);
 
     function initPlayer() {
         player = new YT.Player('player', {
@@ -106,14 +111,21 @@
     function renderWall() {
         const grid = document.getElementById('bgGrid');
         grid.innerHTML = '';
+        
+        // --- 核心改動：隨機分配 ---
+        // 建立一個長度為 20 的索引數組，並隨機打亂
+        let indices = [];
         for (let i = 0; i < 20; i++) {
+            // 即使只有 5 個 record，也會透過取餘數均勻分配到 20 格，然後再打亂
+            indices.push(i % wallData.length);
+        }
+        indices.sort(() => Math.random() - 0.5); // 隨機洗牌
+
+        indices.forEach(dataIndex => {
             const cell = document.createElement('div');
             cell.className = 'playlist-cell';
+            const data = wallData[dataIndex];
             
-            // 嚴格按順序從 XML 讀取對應的數據
-            const data = wallData[i % wallData.length];
-            
-            // 縮圖：不再使用 Core，而是使用 XML 裡對應的 vid
             if (data && data.vid) {
                 cell.innerHTML = `<img class="thumb" src="https://img.youtube.com/vi/${data.vid}/mqdefault.jpg">`;
             }
@@ -124,7 +136,7 @@
                 this.style.zIndex = "5"; 
             };
             grid.appendChild(cell);
-        }
+        });
     }
 
     document.getElementById('mute-toggle').onclick = function() {
@@ -142,7 +154,6 @@
         }
     };
 
-    // YouTube API 準備就緒後啟動
     window.onYouTubeIframeAPIReady = loadDataAndInit;
 </script>
 </body>
